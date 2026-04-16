@@ -1,0 +1,174 @@
+from flask import Flask, request, jsonify, render_template_string
+
+app = Flask(__name__)
+
+# --- HTML + CSS + JS in one place ---
+HTML_PAGE = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Geriatric Loneliness Monitor</title>
+    <style>
+        body {
+            font-family: Arial;
+            padding: 20px;
+            background: #f4f6f8;
+        }
+        h1 {
+            color: #2c3e50;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            width: 400px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            margin: 8px 0;
+        }
+        button {
+            padding: 10px;
+            background: #27ae60;
+            color: white;
+            border: none;
+            cursor: pointer;
+            width: 100%;
+        }
+        #result {
+            margin-top: 20px;
+            background: #ecf0f1;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        .high { color: red; }
+        .medium { color: orange; }
+        .low { color: green; }
+    </style>
+</head>
+<body>
+
+<h1>👴 AI Loneliness Risk Detector</h1>
+
+<div class="container">
+    <input type="number" id="meals" placeholder="Meals per day">
+    <input type="number" id="interactions" placeholder="Social interactions">
+    <input type="number" id="mood" placeholder="Mood (1-5)">
+    <textarea id="notes" placeholder="Caregiver notes"></textarea>
+
+    <button onclick="submitData()">Analyze</button>
+
+    <div id="result"></div>
+</div>
+
+<script>
+async function submitData() {
+    const data = {
+        meals: parseInt(document.getElementById("meals").value),
+        interactions: parseInt(document.getElementById("interactions").value),
+        mood: parseInt(document.getElementById("mood").value),
+        notes: document.getElementById("notes").value
+    };
+
+    const response = await fetch("/analyze", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(data)
+    });
+
+    const result = await response.json();
+
+    let colorClass = result.risk.toLowerCase();
+
+    document.getElementById("result").innerHTML = `
+        <h2 class="${colorClass}">Risk Level: ${result.risk}</h2>
+        <p><b>Score:</b> ${result.score}</p>
+
+        <h3>Summary:</h3>
+        <ul>${result.summary.map(s => `<li>${s}</li>`).join("")}</ul>
+
+        <h3>Recommendations:</h3>
+        <ul>${result.recommendations.map(r => `<li>${r}</li>`).join("")}</ul>
+    `;
+}
+</script>
+
+</body>
+</html>
+
+
+# --- AI Logic ---
+def analyze_data(data):
+    meals = data.get("meals", 0)
+    interactions = data.get("interactions", 0)
+    mood = data.get("mood", 3)
+    notes = data.get("notes", "").lower()
+
+    score = 0
+
+    if meals < 2:
+        score += 2
+    if interactions < 2:
+        score += 3
+    if mood <= 2:
+        score += 3
+
+    cognitive_flag = False
+    isolation_flag = False
+
+    if any(word in notes for word in ["forgot", "confused", "memory"]):
+        cognitive_flag = True
+        score += 2
+
+    if any(word in notes for word in ["alone", "lonely", "no visitors"]):
+        isolation_flag = True
+        score += 2
+
+    if score >= 7:
+        risk = "High"
+    elif score >= 4:
+        risk = "Medium"
+    else:
+        risk = "Low"
+
+    summary = []
+    if isolation_flag:
+        summary.append("Signs of social withdrawal detected.")
+    if cognitive_flag:
+        summary.append("Possible cognitive decline indicators.")
+    if mood <= 2:
+        summary.append("Low mood observed.")
+
+    recommendations = []
+    if interactions < 2:
+        recommendations.append("Encourage group activities or social visits.")
+    if mood <= 2:
+        recommendations.append("Schedule regular family calls.")
+    if cognitive_flag:
+        recommendations.append("Consider professional medical evaluation.")
+
+    return {
+        "risk": risk,
+        "score": score,
+        "summary": summary,
+        "recommendations": recommendations
+    }
+
+# --- Routes ---
+@app.route("/")
+def home():
+    return render_template_string(HTML_PAGE)
+
+@app.route("/analyze", methods=["POST"])
+def analyze():
+    data = request.json
+    result = analyze_data(data)
+    return jsonify(result)
+
+# --- Run App ---
+if __name__ == "__main__":
+    app.run(debug=True)
